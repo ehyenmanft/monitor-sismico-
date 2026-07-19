@@ -154,6 +154,12 @@ header .src a{color:var(--muted)}
 }
 #dmagbig{font-family:'Archivo',sans-serif;font-size:34px;font-weight:800;line-height:1;margin-bottom:8px}
 #dmagbig small{font-size:12px;color:var(--muted);font-weight:500;letter-spacing:.1em}
+#dshare{
+  width:100%;margin-top:10px;padding:8px;cursor:pointer;
+  background:#161d26;color:var(--text);border:1px solid var(--line);border-radius:8px;
+  font-family:inherit;font-size:12px;transition:border-color .15s;
+}
+#dshare:hover{border-color:var(--accent)}
 
 /* timeline */
 #timeline{
@@ -254,7 +260,7 @@ header .src a{color:var(--muted)}
   <div class="dot"></div>
   <h1>SISMO<span>·</span>MONITOR</h1>
   <div class="src">
-    Fuentes: <a href="https://earthquake.usgs.gov" target="_blank">USGS</a> · <a href="http://www.funvisis.gob.ve" target="_blank">FUNVISIS</a> <span style="opacity:.7">(vía SismosVE)</span><br>
+    Fuentes: <a href="https://earthquake.usgs.gov" target="_blank">USGS</a> · <a href="http://www.funvisis.gob.ve" target="_blank">FUNVISIS</a> · <a href="https://www.seismicportal.eu" target="_blank">EMSC</a><br>
     Última actualización: <span id="updated">—</span>
   </div>
 </header>
@@ -286,8 +292,11 @@ header .src a{color:var(--muted)}
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:5px">
       <input type="checkbox" id="srcUSGS" checked style="accent-color:var(--accent)"> USGS <span style="color:var(--muted)">· mundial</span>
     </label>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:5px">
       <input type="checkbox" id="srcFUN" checked style="accent-color:var(--accent)"> FUNVISIS <span style="color:var(--muted)">· Venezuela</span>
+    </label>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+      <input type="checkbox" id="srcEMSC" checked style="accent-color:var(--accent)"> EMSC <span style="color:var(--muted)">· mundial / Caribe</span>
     </label>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:9px;padding-top:8px;border-top:1px dashed var(--line)">
       <input type="checkbox" id="lyPlacas" checked style="accent-color:var(--accent)"> Placas tectónicas
@@ -336,6 +345,7 @@ header .src a{color:var(--muted)}
   <div class="drow"><span class="k">Profundidad</span><span id="ddepth"></span></div>
   <div class="drow"><span class="k">Fuente</span><span id="dsrc"></span></div>
   <div class="drow"><span class="k">Ficha del evento</span><a id="dlink" href="#" target="_blank" style="color:var(--accent)">abrir ↗</a></div>
+  <button id="dshare">🔗 Compartir este sismo</button>
 </div>
 
 <div id="timeline">
@@ -637,14 +647,66 @@ function selectQuake(q, fly){
   const dl = document.getElementById('dlink');
   if(q.url){ dl.style.display=''; dl.href = q.url; } else { dl.style.display='none'; }
   document.getElementById('detail').classList.add('on');
+  try{ history.replaceState(null,'','#evento='+encodeURIComponent(q.id)); }catch(e){}
   if(esMovil()) cerrarHojas();
   if(fly!==false) flyTo(q.lat, q.lon);
 }
 document.getElementById('dclose').onclick = ()=>{
   document.getElementById('detail').classList.remove('on');
   selectedId=null;
+  try{ history.replaceState(null,'',location.pathname+location.search); }catch(e){}
   document.querySelectorAll('.quake.sel').forEach(el=>el.classList.remove('sel'));
 };
+
+/* ================= compartir y enlaces profundos ================= */
+function urlEvento(q){
+  return location.origin + location.pathname + location.search + '#evento=' + encodeURIComponent(q.id);
+}
+document.getElementById('dshare').addEventListener('click', async ()=>{
+  const q = allQuakes.find(x=>x.id===selectedId);
+  if(!q) return;
+  const texto = '⚠ Sismo M '+q.mag.toFixed(1)+' — '+q.place+' — '+fmtTime(q.time)+' (fuente '+q.src+')';
+  const url = urlEvento(q);
+  const btn = document.getElementById('dshare');
+  if(navigator.share){
+    try{ await navigator.share({title:'SISMO·MONITOR', text:texto, url}); }catch(e){ /* usuario canceló */ }
+  } else {
+    try{
+      await navigator.clipboard.writeText(texto+'\n'+url);
+      btn.textContent = '✓ Enlace copiado';
+    }catch(e){
+      prompt('Copia el enlace:', url);
+    }
+    setTimeout(()=>{ btn.textContent = '🔗 Compartir este sismo'; }, 2500);
+  }
+});
+
+let enlaceProfundo = null;
+try{
+  const h = new URLSearchParams(location.hash.slice(1));
+  enlaceProfundo = h.get('evento');
+}catch(e){}
+
+function resolverEnlaceProfundo(){
+  if(!enlaceProfundo) return;
+  const id = enlaceProfundo;
+  enlaceProfundo = null;
+  const q = allQuakes.find(x=>x.id===id);
+  if(q){
+    selectQuake(q, true);
+  } else {
+    const st = document.getElementById('status');
+    st.textContent = 'El sismo del enlace ya no está en la ventana de 24 horas del panel.';
+    st.classList.add('on');
+    setTimeout(()=>st.classList.remove('on'), 8000);
+  }
+}
+addEventListener('hashchange', ()=>{
+  try{
+    const id = new URLSearchParams(location.hash.slice(1)).get('evento');
+    if(id){ enlaceProfundo = id; resolverEnlaceProfundo(); }
+  }catch(e){}
+});
 
 function renderList(){
   const list = document.getElementById('list');
@@ -865,18 +927,23 @@ function applyData(list){
   allQuakes = list.sort((a,b)=>b.time-a.time);
   applyFilters();
   revisarAlertas(allQuakes);
+  resolverEnlaceProfundo();
   document.getElementById('updated').textContent = new Date().toLocaleTimeString('es');
 }
 
 function applyFilters(){
-  const useU = document.getElementById('srcUSGS').checked;
-  const useF = document.getElementById('srcFUN').checked;
-  quakes = allQuakes.filter(q => (q.src==='USGS' ? useU : useF));
+  const activo = {
+    'USGS': document.getElementById('srcUSGS').checked,
+    'FUNVISIS': document.getElementById('srcFUN').checked,
+    'EMSC': document.getElementById('srcEMSC').checked
+  };
+  quakes = allQuakes.filter(q => activo[q.src] !== false);
   addMarkers(quakes);
   renderList(); renderStats(); renderTimeline();
 }
 document.getElementById('srcUSGS').addEventListener('change', applyFilters);
 document.getElementById('srcFUN').addEventListener('change', applyFilters);
+document.getElementById('srcEMSC').addEventListener('change', applyFilters);
 document.getElementById('lyPlacas').addEventListener('change', e=>{ plateGroup.visible = e.target.checked; });
 
 async function fetchUSGS(){
@@ -976,34 +1043,62 @@ async function fetchFUNVISIS(){
   }).filter(q=>!isNaN(q.lat)&&!isNaN(q.lon)&&q.mag>0&&q.time!=null);
 }
 
-/* descarta duplicados: mismo evento reportado por ambas redes (≈ <10 min y <0.5°) */
-function mergeSources(usgs, fun){
-  const out = [...fun];
-  usgs.forEach(u=>{
-    const dup = fun.some(f =>
-      Math.abs(f.time-u.time) < 10*60*1000 &&
-      Math.abs(f.lat-u.lat) < 0.5 &&
-      Math.abs(f.lon-u.lon) < 0.5
-    );
-    if(!dup) out.push(u);
+async function fetchEMSC(){
+  const desde = new Date(Date.now() - 24*3600*1000).toISOString().slice(0,19);
+  const r = await fetch('https://www.seismicportal.eu/fdsnws/event/1/query?format=json&limit=800&starttime='+desde);
+  if(r.status===204) return []; // sin eventos en la ventana
+  if(!r.ok) throw new Error('EMSC '+r.status);
+  const gj = await r.json();
+  return (gj.features||[]).map(f=>{
+    const p = f.properties||{};
+    return {
+      id:'em-'+(p.unid||p.source_id),
+      src:'EMSC',
+      mag:p.mag,
+      place:(p.flynn_region||'—'),
+      time:Date.parse(p.time),
+      lat:p.lat,
+      lon:p.lon,
+      depth:p.depth||0,
+      url:'https://www.seismicportal.eu/eventdetails.html?unid='+(p.unid||'')
+    };
+  }).filter(q=>q.mag!=null && isFinite(q.lat) && isFinite(q.lon) && !isNaN(q.time));
+}
+
+/* fusiona N listas en orden de prioridad, descartando duplicados
+   (mismo evento reportado por varias redes: <10 min y <0.5°) */
+function mergeSources(listas){
+  const out = [];
+  listas.forEach(lista=>{
+    lista.forEach(e=>{
+      const dup = out.some(o =>
+        Math.abs(o.time-e.time) < 10*60*1000 &&
+        Math.abs(o.lat-e.lat) < 0.5 &&
+        Math.abs(o.lon-e.lon) < 0.5
+      );
+      if(!dup) out.push(e);
+    });
   });
-  // el panel muestra las últimas 24 h; el catálogo de FUNVISIS puede traer más historia
+  // el panel muestra las últimas 24 h; los catálogos pueden traer más historia
   const desde = Date.now() - 24*3600*1000;
   return out.filter(q=>q.time >= desde);
 }
 
 async function fetchQuakes(){
-  const results = await Promise.allSettled([fetchUSGS(), fetchFUNVISIS()]);
+  const results = await Promise.allSettled([fetchUSGS(), fetchFUNVISIS(), fetchEMSC()]);
   const usgs = results[0].status==='fulfilled' ? results[0].value : [];
   const fun  = results[1].status==='fulfilled' ? results[1].value : [];
+  const emsc = results[2].status==='fulfilled' ? results[2].value : [];
   const st = document.getElementById('status');
-  if(usgs.length || fun.length){
-    applyData(mergeSources(usgs, fun));
+  if(usgs.length || fun.length || emsc.length){
+    // prioridad ante duplicados: FUNVISIS (red local) > USGS > EMSC
+    applyData(mergeSources([fun, usgs, emsc]));
     const failed = [];
     if(results[0].status!=='fulfilled') failed.push('USGS');
     if(results[1].status!=='fulfilled') failed.push('FUNVISIS');
+    if(results[2].status!=='fulfilled') failed.push('EMSC');
     if(failed.length){
-      st.textContent = '⚠ Sin conexión con: '+failed.join(', ')+'. Mostrando solo la fuente disponible.';
+      st.textContent = '⚠ Sin conexión con: '+failed.join(', ')+'. Mostrando las fuentes disponibles.';
       st.classList.add('on');
     } else {
       st.classList.remove('on');

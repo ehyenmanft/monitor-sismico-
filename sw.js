@@ -6,7 +6,7 @@
  *    → un panel de tiempo real jamás debe mostrar datos viejos como frescos.
  * Al actualizar la web, sube también este archivo cambiando VERSION.
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = 'sismo-monitor-' + VERSION;
 
 const PRECACHE = [
@@ -23,7 +23,8 @@ const DATOS_VIVOS = [
   'earthquake.usgs.gov',
   'script.google.com',
   'script.googleusercontent.com',
-  'sismosve.rafnixg.dev'
+  'sismosve.rafnixg.dev',
+  'seismicportal.eu'
 ];
 
 self.addEventListener('install', e => {
