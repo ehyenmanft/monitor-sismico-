@@ -27,7 +27,7 @@ body{
   font-family:'JetBrains Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
   font-size:13px;
 }
-#scene{position:fixed;inset:0;cursor:grab;touch-action:none}
+#scene{position:fixed;inset:0;width:100%;height:100%;cursor:grab;touch-action:none}
 #scene.dragging{cursor:grabbing}
 
 /* ---------- header ---------- */
@@ -471,17 +471,41 @@ addEventListener('keydown', e=>{
   else if(e.key==='-'||e.key==='_') targetDist=Math.min(650,targetDist+25);
 });
 
-/* clic → raycast */
+/* clic / toque → raycast con tolerancia táctil */
 const ray = new THREE.Raycaster(); const mouse = new THREE.Vector2();
 let downAt=null;
 canvas.addEventListener('pointerdown', e=>{ downAt=[e.clientX,e.clientY]; });
-canvas.addEventListener('click', e=>{
-  if(downAt && Math.hypot(e.clientX-downAt[0], e.clientY-downAt[1])>5) return; // fue drag
-  mouse.x = (e.clientX/innerWidth)*2-1;
-  mouse.y = -(e.clientY/innerHeight)*2+1;
+
+function marcadorEn(clientX, clientY){
+  mouse.x = (clientX/innerWidth)*2-1;
+  mouse.y = -(clientY/innerHeight)*2+1;
   ray.setFromCamera(mouse, camera);
   const hits = ray.intersectObjects(markers.map(m=>m.mesh));
-  if(hits.length) selectQuake(hits[0].object.userData.quake, true);
+  if(hits.length) return hits[0].object.userData.quake;
+
+  // el dedo no acierta puntos de pocos píxeles: buscar el marcador
+  // visible más cercano dentro de un radio de pantalla
+  const RADIO = esMovilTactil() ? 30 : 14; // px
+  const camDir = camera.position.clone().normalize();
+  const v = new THREE.Vector3();
+  let mejor=null, mejorD=RADIO;
+  markers.forEach(m=>{
+    m.mesh.getWorldPosition(v);
+    if(v.clone().normalize().dot(camDir) < 0.15) return; // está en la cara oculta del globo
+    const p = v.clone().project(camera);
+    const sx = ( p.x+1)/2*innerWidth;
+    const sy = (-p.y+1)/2*innerHeight;
+    const d = Math.hypot(sx-clientX, sy-clientY);
+    if(d < mejorD){ mejorD=d; mejor=m.quake; }
+  });
+  return mejor;
+}
+const esMovilTactil = ()=>matchMedia('(pointer:coarse)').matches;
+
+canvas.addEventListener('click', e=>{
+  if(downAt && Math.hypot(e.clientX-downAt[0], e.clientY-downAt[1])>10) return; // fue drag
+  const q = marcadorEn(e.clientX, e.clientY);
+  if(q) selectQuake(q, true);
 });
 
 /* volar hacia un punto */
