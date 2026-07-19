@@ -30,6 +30,29 @@ body{
 #scene{position:fixed;inset:0;width:100%;height:100%;cursor:grab;touch-action:none}
 #scene.dragging{cursor:grabbing}
 
+/* alertas */
+.alrow{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:6px 0;color:var(--muted)}
+.alrow select{
+  background:#161d26;color:var(--text);border:1px solid var(--line);border-radius:6px;
+  font-family:inherit;font-size:11px;padding:3px 6px;
+}
+#alTest{
+  width:100%;background:#161d26;color:var(--text);border:1px solid var(--line);
+  border-radius:7px;padding:6px;font-family:inherit;font-size:11px;cursor:pointer;
+}
+#alTest:hover{border-color:var(--accent)}
+#alertBanner{
+  position:fixed;left:50%;top:64px;transform:translateX(-50%);z-index:35;
+  background:#3a1518;border:1px solid var(--m4);color:#ffd9db;
+  padding:12px 20px;border-radius:10px;font-size:13px;display:none;
+  max-width:min(520px,92vw);text-align:center;box-shadow:0 0 30px #e8484f55;
+  animation:alertPulse 1s infinite;
+}
+#alertBanner.on{display:block}
+#alertBanner b{color:#fff;font-size:16px}
+@keyframes alertPulse{0%,100%{border-color:var(--m4)}50%{border-color:#ffd9db}}
+@media (prefers-reduced-motion:reduce){ #alertBanner{animation:none} }
+
 /* ---------- header ---------- */
 header{
   position:fixed;top:0;left:0;right:0;z-index:20;
@@ -231,6 +254,7 @@ header .src a{color:var(--muted)}
 
 <div id="hint">arrastrar · rueda = zoom · ← → ↑ ↓ rotar · + − zoom · clic en un punto</div>
 <div id="status"></div>
+<div id="alertBanner"></div>
 
 <aside class="panel" id="left">
   <h2>Últimas 24 horas</h2>
@@ -258,6 +282,32 @@ header .src a{color:var(--muted)}
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
       <input type="checkbox" id="srcFUN" checked style="accent-color:var(--accent)"> FUNVISIS <span style="color:var(--muted)">· Venezuela</span>
     </label>
+  </div>
+  <div id="alertas" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:11px">
+    <div style="font-family:'Archivo',sans-serif;font-size:10px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Alertas</div>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px">
+      <input type="checkbox" id="alOn" style="accent-color:var(--accent)"> <b>Activar alertas</b>
+    </label>
+    <div class="alrow">Magnitud mínima
+      <select id="alMag">
+        <option value="2.5">M 2.5</option><option value="4" selected>M 4.0</option>
+        <option value="4.5">M 4.5</option><option value="5">M 5.0</option><option value="6">M 6.0</option>
+      </select>
+    </div>
+    <div class="alrow">Radio desde mi ubicación
+      <select id="alRad">
+        <option value="100">100 km</option><option value="300" selected>300 km</option>
+        <option value="500">500 km</option><option value="1000">1000 km</option>
+        <option value="0">Todo el mundo</option>
+      </select>
+    </div>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0"><input type="checkbox" id="alSound" checked style="accent-color:var(--accent)"> Sonido de alarma</label>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="alNotif" checked style="accent-color:var(--accent)"> Notificación del navegador</label>
+    <button id="alTest">Probar alerta</button>
+    <div id="alStatus" style="margin-top:7px;color:var(--muted);font-size:10px"></div>
+    <div style="margin-top:8px;padding:7px 8px;background:#161d26;border-radius:7px;font-size:9px;color:var(--muted);line-height:1.5">
+      ⚠ Los sismos no se pueden predecir. Esta alerta avisa de eventos <b>ya registrados</b> por las redes sismológicas, con minutos de retraso. No sustituye los sistemas oficiales de protección civil.
+    </div>
   </div>
 </aside>
 
@@ -634,6 +684,142 @@ function renderTimeline(){
   ctx.globalAlpha=1;
 }
 
+/* ================= alertas ================= */
+const AL = { on:false, mag:4, rad:300, sound:true, notif:true, pos:null };
+const vistos = new Set();
+let primeraCarga = true;
+
+function cargarAjustes(){
+  try{
+    const s = JSON.parse(localStorage.getItem('sm_alertas'));
+    if(s) Object.assign(AL, s, {pos:null});
+  }catch(e){}
+  document.getElementById('alOn').checked = AL.on;
+  document.getElementById('alMag').value = String(AL.mag);
+  document.getElementById('alRad').value = String(AL.rad);
+  document.getElementById('alSound').checked = AL.sound;
+  document.getElementById('alNotif').checked = AL.notif;
+}
+function guardarAjustes(){
+  try{ localStorage.setItem('sm_alertas', JSON.stringify({on:AL.on,mag:AL.mag,rad:AL.rad,sound:AL.sound,notif:AL.notif})); }catch(e){}
+}
+function setAlStatus(msg){ document.getElementById('alStatus').textContent = msg; }
+
+function distKm(lat1,lon1,lat2,lon2){
+  const R=6371, dLa=(lat2-lat1)*Math.PI/180, dLo=(lon2-lon1)*Math.PI/180;
+  const a = Math.sin(dLa/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLo/2)**2;
+  return 2*R*Math.asin(Math.sqrt(a));
+}
+
+function pedirUbicacion(){
+  if(!navigator.geolocation){ setAlStatus('Este navegador no soporta geolocalización — alertas para todo el mundo.'); return; }
+  setAlStatus('Solicitando ubicación…');
+  navigator.geolocation.getCurrentPosition(
+    p=>{
+      AL.pos = {lat:p.coords.latitude, lon:p.coords.longitude};
+      setAlStatus('✓ Ubicación fijada. Vigilando un radio de '+(AL.rad||'∞')+' km.');
+    },
+    ()=>{
+      AL.pos = null;
+      setAlStatus('Sin permiso de ubicación: se alertará de sismos en todo el mundo que superen la magnitud mínima.');
+    },
+    {enableHighAccuracy:false, timeout:10000, maximumAge:600000}
+  );
+}
+
+let audioCtx = null;
+function sonarAlerta(mag){
+  try{
+    audioCtx = audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    if(audioCtx.state==='suspended') audioCtx.resume();
+    const pulsos = mag>=6 ? 6 : mag>=5 ? 4 : 3; // más fuerte = más insistente
+    for(let i=0;i<pulsos;i++){
+      const t0 = audioCtx.currentTime + i*0.55;
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type='square';
+      o.frequency.setValueAtTime(880, t0);
+      o.frequency.setValueAtTime(620, t0+0.25);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.3, t0+0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+0.5);
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t0); o.stop(t0+0.52);
+    }
+  }catch(e){}
+}
+
+let bannerTimer = null;
+function mostrarBanner(q){
+  const b = document.getElementById('alertBanner');
+  const dist = AL.pos ? ' · a '+Math.round(distKm(AL.pos.lat,AL.pos.lon,q.lat,q.lon))+' km de ti' : '';
+  b.innerHTML = '⚠ SISMO REGISTRADO — <b>M '+q.mag.toFixed(1)+'</b><br>'+q.place+dist+'<br>'+fmtTime(q.time)+' · fuente '+q.src;
+  b.classList.add('on');
+  clearTimeout(bannerTimer);
+  bannerTimer = setTimeout(()=>b.classList.remove('on'), 20000);
+}
+
+function notificar(q){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  try{
+    new Notification('⚠ Sismo M '+q.mag.toFixed(1), {
+      body: q.place+'\n'+fmtTime(q.time)+' · prof. '+q.depth.toFixed(0)+' km · '+q.src,
+      tag: 'sismo-monitor'
+    });
+  }catch(e){}
+}
+
+function revisarAlertas(lista){
+  const nuevos = lista.filter(q=>!vistos.has(q.id));
+  lista.forEach(q=>vistos.add(q.id));
+  if(primeraCarga){ primeraCarga=false; return; }   // no alertar por el histórico inicial
+  if(!AL.on || !nuevos.length) return;
+
+  const candidatos = nuevos.filter(q =>
+    q.mag >= AL.mag &&
+    (!AL.rad || !AL.pos || distKm(AL.pos.lat, AL.pos.lon, q.lat, q.lon) <= AL.rad)
+  );
+  if(!candidatos.length) return;
+
+  const q = candidatos.sort((a,b)=>b.mag-a.mag)[0]; // el mayor manda
+  if(AL.sound) sonarAlerta(q.mag);
+  if(AL.notif) notificar(q);
+  mostrarBanner(q);
+  selectQuake(q, true);
+}
+
+/* eventos de la interfaz de alertas */
+document.getElementById('alOn').addEventListener('change', e=>{
+  AL.on = e.target.checked;
+  guardarAjustes();
+  if(AL.on){
+    sonarAlerta(0);            // el primer clic desbloquea el audio del navegador
+    if(AL.notif && 'Notification' in window && Notification.permission==='default'){
+      Notification.requestPermission();
+    }
+    if(AL.rad) pedirUbicacion(); else setAlStatus('Alertas activas para todo el mundo.');
+  } else setAlStatus('');
+});
+document.getElementById('alMag').addEventListener('change', e=>{ AL.mag=parseFloat(e.target.value); guardarAjustes(); });
+document.getElementById('alRad').addEventListener('change', e=>{
+  AL.rad=parseInt(e.target.value);
+  guardarAjustes();
+  if(AL.on && AL.rad && !AL.pos) pedirUbicacion();
+  else if(AL.on) setAlStatus(AL.rad ? '✓ Vigilando un radio de '+AL.rad+' km.' : 'Alertas activas para todo el mundo.');
+});
+document.getElementById('alSound').addEventListener('change', e=>{ AL.sound=e.target.checked; guardarAjustes(); });
+document.getElementById('alNotif').addEventListener('change', e=>{
+  AL.notif=e.target.checked;
+  guardarAjustes();
+  if(AL.notif && 'Notification' in window && Notification.permission==='default') Notification.requestPermission();
+});
+document.getElementById('alTest').addEventListener('click', ()=>{
+  const demo = quakes[0] || {mag:5.2, place:'Evento de prueba', time:Date.now(), depth:10, src:'PRUEBA', lat:AL.pos?AL.pos.lat:10.5, lon:AL.pos?AL.pos.lon:-66.9, id:'test'};
+  sonarAlerta(demo.mag);
+  notificar(demo);
+  mostrarBanner(demo);
+});
+cargarAjustes();
+
 /* ================= datos ================= */
 const SAMPLE = [
   {id:'s1',mag:6.3,place:'Costa de Atacama, Chile',time:Date.now()-3600e3*2,lat:-27.1,lon:-70.8,depth:42,url:''},
@@ -653,6 +839,7 @@ let allQuakes = [];
 function applyData(list){
   allQuakes = list.sort((a,b)=>b.time-a.time);
   applyFilters();
+  revisarAlertas(allQuakes);
   document.getElementById('updated').textContent = new Date().toLocaleTimeString('es');
 }
 
@@ -750,7 +937,7 @@ async function fetchFUNVISIS(){
     if(lon==null && g.length>=2 && esCoord(g[0])) lon = g[0];
 
     return {
-      id:'fv-'+(fecha||'')+'-'+(hora||'')+'-'+i,
+      id:'fv-'+(fecha||'')+'-'+(hora||'')+'-'+lat+'-'+lon,
       src:'FUNVISIS',
       mag:parseFloat(String(mag??'').replace(',','.'))||0,
       place:(lugar?String(lugar).replace(/\s+/g,' ').trim():'—')+', Venezuela',
