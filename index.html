@@ -60,6 +60,31 @@ body{
 @keyframes alertPulse{0%,100%{border-color:var(--m4)}50%{border-color:#ffd9db}}
 @media (prefers-reduced-motion:reduce){ #alertBanner{animation:none} }
 
+/* controles de cabecera + kiosko */
+.hctrl{display:flex;gap:6px;pointer-events:auto}
+.hctrl button{
+  background:var(--panel);color:var(--muted);border:1px solid var(--line);
+  border-radius:7px;padding:4px 9px;font-family:inherit;font-size:11px;cursor:pointer;
+}
+.hctrl button:hover{color:var(--text);border-color:var(--accent)}
+#kioskExit{
+  display:none;position:fixed;top:14px;right:14px;z-index:40;
+  background:var(--panel);color:var(--muted);border:1px solid var(--line);
+  border-radius:50%;width:36px;height:36px;font-family:inherit;font-size:15px;cursor:pointer;
+}
+body.kiosko #left, body.kiosko #right, body.kiosko #timeline,
+body.kiosko #hint, body.kiosko #mobilenav, body.kiosko .hctrl{display:none !important}
+body.kiosko #kioskExit{display:block}
+
+/* fila de botones de la ficha */
+#drowbtns{display:flex;gap:8px;margin-top:10px}
+#drowbtns button{
+  flex:1;padding:8px;cursor:pointer;
+  background:#161d26;color:var(--text);border:1px solid var(--line);border-radius:8px;
+  font-family:inherit;font-size:12px;transition:border-color .15s;
+}
+#drowbtns button:hover{border-color:var(--accent)}
+
 /* ---------- header ---------- */
 header{
   position:fixed;top:0;left:0;right:0;z-index:20;
@@ -154,12 +179,6 @@ header .src a{color:var(--muted)}
 }
 #dmagbig{font-family:'Archivo',sans-serif;font-size:34px;font-weight:800;line-height:1;margin-bottom:8px}
 #dmagbig small{font-size:12px;color:var(--muted);font-weight:500;letter-spacing:.1em}
-#dshare{
-  width:100%;margin-top:10px;padding:8px;cursor:pointer;
-  background:#161d26;color:var(--text);border:1px solid var(--line);border-radius:8px;
-  font-family:inherit;font-size:12px;transition:border-color .15s;
-}
-#dshare:hover{border-color:var(--accent)}
 
 /* timeline */
 #timeline{
@@ -252,29 +271,34 @@ header .src a{color:var(--muted)}
 </head>
 <body>
 
-<div id="loading"><div class="ring"></div><p>CONECTANDO CON USGS…</p></div>
+<div id="loading"><div class="ring"></div><p id="loadingTxt">CONECTANDO CON LAS FUENTES…</p></div>
 
 <canvas id="scene" tabindex="0"></canvas>
 
 <header>
   <div class="dot"></div>
   <h1>SISMO<span>·</span>MONITOR</h1>
+  <div class="hctrl">
+    <button id="langBtn" title="English / Español">EN</button>
+    <button id="kioskBtn" title="Modo pantalla completa">⛶</button>
+  </div>
   <div class="src">
-    Fuentes: <a href="https://earthquake.usgs.gov" target="_blank">USGS</a> · <a href="http://www.funvisis.gob.ve" target="_blank">FUNVISIS</a> · <a href="https://www.seismicportal.eu" target="_blank">EMSC</a><br>
-    Última actualización: <span id="updated">—</span>
+    <span data-i18n="fuentes">Fuentes:</span> <a href="https://earthquake.usgs.gov" target="_blank">USGS</a> · <a href="http://www.funvisis.gob.ve" target="_blank">FUNVISIS</a> · <a href="https://www.seismicportal.eu" target="_blank">EMSC</a><br>
+    <span data-i18n="actualizacion">Última actualización:</span> <span id="updated">—</span>
   </div>
 </header>
+<button id="kioskExit" title="Salir">✕</button>
 
-<div id="hint">arrastrar · rueda = zoom · ← → ↑ ↓ rotar · + − zoom · clic en un punto</div>
+<div id="hint" data-i18n="hint">arrastrar · rueda = zoom · ← → ↑ ↓ rotar · + − zoom · clic en un punto</div>
 <div id="status"></div>
 <div id="alertBanner"></div>
 
 <aside class="panel" id="left">
-  <h2>Últimas 24 horas</h2>
-  <div class="stat"><span class="k">Eventos</span><span class="v" id="sCount">—</span></div>
-  <div class="stat"><span class="k">Magnitud máx.</span><span class="v" id="sMax">—</span></div>
+  <h2 data-i18n="h24">Últimas 24 horas</h2>
+  <div class="stat"><span class="k" data-i18n="eventos">Eventos</span><span class="v" id="sCount">—</span></div>
+  <div class="stat"><span class="k" data-i18n="magmax">Magnitud máx.</span><span class="v" id="sMax">—</span></div>
   <div class="stat"><span class="k">M ≥ 4.5</span><span class="v" id="sSig">—</span></div>
-  <div class="stat"><span class="k">Prof. media</span><span class="v" id="sDepth">— <small>km</small></span></div>
+  <div class="stat"><span class="k" data-i18n="profmedia">Prof. media</span><span class="v" id="sDepth">— <small>km</small></span></div>
   <div id="hist">
     <div class="hrow"><span class="hl">M &lt; 2.5</span><div class="hbar" id="h1" style="background:var(--m1)"></div><span class="hn" id="n1"></span></div>
     <div class="hrow"><span class="hl">2.5–4.5</span><div class="hbar" id="h2" style="background:var(--m2)"></div><span class="hn" id="n2"></span></div>
@@ -282,81 +306,85 @@ header .src a{color:var(--muted)}
     <div class="hrow"><span class="hl">M ≥ 6.0</span><div class="hbar" id="h4" style="background:var(--m4)"></div><span class="hn" id="n4"></span></div>
   </div>
   <div id="legend">
-    <i style="background:var(--m1)"></i>menor &nbsp;
-    <i style="background:var(--m2)"></i>ligero<br>
-    <i style="background:var(--m3)"></i>moderado–fuerte &nbsp;
-    <i style="background:var(--m4)"></i>mayor
+    <i style="background:var(--m1)"></i><span data-i18n="menor">menor</span> &nbsp;
+    <i style="background:var(--m2)"></i><span data-i18n="ligero">ligero</span><br>
+    <i style="background:var(--m3)"></i><span data-i18n="modfuerte">moderado–fuerte</span> &nbsp;
+    <i style="background:var(--m4)"></i><span data-i18n="mayor">mayor</span><br>
+    <span data-i18n="profleyenda" style="display:block;margin-top:4px">anillo gris = prof. 70–300 km · azul = &gt;300 km</span>
   </div>
   <div id="sources" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:11px">
-    <div style="font-family:'Archivo',sans-serif;font-size:10px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Fuentes</div>
+    <div style="font-family:'Archivo',sans-serif;font-size:10px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;margin-bottom:8px" data-i18n="fuentesT">Fuentes</div>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:5px">
-      <input type="checkbox" id="srcUSGS" checked style="accent-color:var(--accent)"> USGS <span style="color:var(--muted)">· mundial</span>
+      <input type="checkbox" id="srcUSGS" checked style="accent-color:var(--accent)"> USGS <span style="color:var(--muted)" data-i18n="mundial">· mundial</span>
     </label>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:5px">
       <input type="checkbox" id="srcFUN" checked style="accent-color:var(--accent)"> FUNVISIS <span style="color:var(--muted)">· Venezuela</span>
     </label>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-      <input type="checkbox" id="srcEMSC" checked style="accent-color:var(--accent)"> EMSC <span style="color:var(--muted)">· mundial / Caribe</span>
+      <input type="checkbox" id="srcEMSC" checked style="accent-color:var(--accent)"> EMSC <span style="color:var(--muted)" data-i18n="caribe">· mundial / Caribe</span>
     </label>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:9px;padding-top:8px;border-top:1px dashed var(--line)">
-      <input type="checkbox" id="lyPlacas" checked style="accent-color:var(--accent)"> Placas tectónicas
+      <input type="checkbox" id="lyPlacas" checked style="accent-color:var(--accent)"> <span data-i18n="placas">Placas tectónicas</span>
       <span style="display:inline-block;width:16px;height:2px;background:#b0603a;border-radius:1px"></span>
     </label>
   </div>
   <div id="alertas" style="margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:11px">
-    <div style="font-family:'Archivo',sans-serif;font-size:10px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;margin-bottom:8px">Alertas</div>
+    <div style="font-family:'Archivo',sans-serif;font-size:10px;letter-spacing:.18em;color:var(--muted);text-transform:uppercase;margin-bottom:8px" data-i18n="alertasT">Alertas</div>
     <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px">
-      <input type="checkbox" id="alOn" style="accent-color:var(--accent)"> <b>Activar alertas</b>
+      <input type="checkbox" id="alOn" style="accent-color:var(--accent)"> <b data-i18n="activar">Activar alertas</b>
     </label>
-    <div class="alrow">Magnitud mínima
+    <div class="alrow"><span data-i18n="magmin">Magnitud mínima</span>
       <select id="alMag">
         <option value="2.5">M 2.5</option><option value="4" selected>M 4.0</option>
         <option value="4.5">M 4.5</option><option value="5">M 5.0</option><option value="6">M 6.0</option>
       </select>
     </div>
-    <div class="alrow">Radio desde mi ubicación
+    <div class="alrow"><span data-i18n="radio">Radio desde mi ubicación</span>
       <select id="alRad">
         <option value="100">100 km</option><option value="300" selected>300 km</option>
         <option value="500">500 km</option><option value="1000">1000 km</option>
-        <option value="0">Todo el mundo</option>
+        <option value="0" data-i18n="mundoentero">Todo el mundo</option>
       </select>
     </div>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0"><input type="checkbox" id="alSound" checked style="accent-color:var(--accent)"> Sonido de alarma</label>
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="alNotif" checked style="accent-color:var(--accent)"> Notificación del navegador</label>
-    <button id="alTest">Probar alerta</button>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin:6px 0"><input type="checkbox" id="alSound" checked style="accent-color:var(--accent)"> <span data-i18n="sonido">Sonido de alarma</span></label>
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px"><input type="checkbox" id="alNotif" checked style="accent-color:var(--accent)"> <span data-i18n="notifB">Notificación del navegador</span></label>
+    <button id="alTest" data-i18n="probar">Probar alerta</button>
     <div id="alStatus" style="margin-top:7px;color:var(--muted);font-size:10px"></div>
-    <div style="margin-top:8px;padding:7px 8px;background:#161d26;border-radius:7px;font-size:9px;color:var(--muted);line-height:1.5">
+    <div style="margin-top:8px;padding:7px 8px;background:#161d26;border-radius:7px;font-size:9px;color:var(--muted);line-height:1.5" data-i18n="disclaimer">
       ⚠ Los sismos no se pueden predecir. Esta alerta avisa de eventos <b>ya registrados</b> por las redes sismológicas, con minutos de retraso. No sustituye los sistemas oficiales de protección civil.
     </div>
   </div>
 </aside>
 
 <aside class="panel" id="right">
-  <h2>Eventos recientes <span id="listCount" style="float:right;color:var(--text)"></span></h2>
+  <h2><span data-i18n="recientes">Eventos recientes</span> <span id="listCount" style="float:right;color:var(--text)"></span></h2>
   <div id="list"></div>
 </aside>
 
 <div class="panel" id="detail">
   <button id="dclose">✕</button>
   <div id="dmagbig">— <small>Mw</small></div>
-  <div class="drow"><span class="k">Ubicación</span><span id="dplace" style="text-align:right"></span></div>
-  <div class="drow"><span class="k">Fecha / hora local</span><span id="dtime"></span></div>
-  <div class="drow"><span class="k">Coordenadas</span><span id="dcoord"></span></div>
-  <div class="drow"><span class="k">Profundidad</span><span id="ddepth"></span></div>
-  <div class="drow"><span class="k">Fuente</span><span id="dsrc"></span></div>
-  <div class="drow"><span class="k">Ficha del evento</span><a id="dlink" href="#" target="_blank" style="color:var(--accent)">abrir ↗</a></div>
-  <button id="dshare">🔗 Compartir este sismo</button>
+  <div class="drow"><span class="k" data-i18n="ubicacion">Ubicación</span><span id="dplace" style="text-align:right"></span></div>
+  <div class="drow"><span class="k" data-i18n="fechahora">Fecha / hora local</span><span id="dtime"></span></div>
+  <div class="drow"><span class="k" data-i18n="coords">Coordenadas</span><span id="dcoord"></span></div>
+  <div class="drow"><span class="k" data-i18n="profundidad">Profundidad</span><span id="ddepth"></span></div>
+  <div class="drow"><span class="k" data-i18n="fuenteL">Fuente</span><span id="dsrc"></span></div>
+  <div class="drow"><span class="k" data-i18n="ficha">Ficha del evento</span><a id="dlink" href="#" target="_blank" style="color:var(--accent)" data-i18n="abrir">abrir ↗</a></div>
+  <div id="drowbtns">
+    <button id="dshare" data-i18n="compartir">🔗 Compartir</button>
+    <button id="dcard" data-i18n="tarjeta">🖼 Tarjeta</button>
+  </div>
 </div>
 
 <div id="timeline">
-  <h2>Sismógrafo · 24 h &nbsp;<span style="letter-spacing:0;text-transform:none">(altura = magnitud)</span></h2>
+  <h2><span data-i18n="sismografo">Sismógrafo · 24 h</span> &nbsp;<span style="letter-spacing:0;text-transform:none" data-i18n="altura">(altura = magnitud)</span></h2>
   <canvas id="tlcanvas"></canvas>
 </div>
 
 <nav id="mobilenav">
-  <button id="mnGlobo" class="act"><span class="ico">◉</span>Globo</button>
-  <button id="mnDatos"><span class="ico">▤</span>Datos</button>
-  <button id="mnEventos"><span class="ico">≡</span>Eventos</button>
+  <button id="mnGlobo" class="act"><span class="ico">◉</span><span data-i18n="navGlobo">Globo</span></button>
+  <button id="mnDatos"><span class="ico">▤</span><span data-i18n="navDatos">Datos</span></button>
+  <button id="mnEventos"><span class="ico">≡</span><span data-i18n="navEventos">Eventos</span></button>
   <button id="mnTl"><span class="ico">∿</span>24 h</button>
 </nav>
 
@@ -479,6 +507,18 @@ function addMarkers(quakes){
     mesh.position.copy(latLonToV3(q.lat, q.lon, R*1.004));
     mesh.userData.quake = q;
     markerGroup.add(mesh);
+
+    // anillo de profundidad: gris = intermedio (70–300 km), azul = profundo (>300 km)
+    const dcol = q.depth > 300 ? 0x6a7dd8 : q.depth >= 70 ? 0x8fa3b8 : null;
+    if(dcol){
+      const dr = new THREE.Mesh(
+        new THREE.RingGeometry(size*1.25, size*1.5, 24),
+        new THREE.MeshBasicMaterial({color:dcol, side:THREE.DoubleSide, transparent:true, opacity:.85})
+      );
+      dr.position.copy(latLonToV3(q.lat, q.lon, R*1.0045));
+      dr.lookAt(0,0,0);
+      markerGroup.add(dr);
+    }
 
     let ring = null;
     if(q.mag >= 4.5){
@@ -603,7 +643,7 @@ function flyTo(lat, lon){
 let quakes=[], selectedId=null;
 
 function fmtTime(ms){
-  return new Date(ms).toLocaleString('es', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  return new Date(ms).toLocaleString(LANG==='en'?'en-GB':'es', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 
 /* ================= navegación móvil ================= */
@@ -665,7 +705,7 @@ function urlEvento(q){
 document.getElementById('dshare').addEventListener('click', async ()=>{
   const q = allQuakes.find(x=>x.id===selectedId);
   if(!q) return;
-  const texto = '⚠ Sismo M '+q.mag.toFixed(1)+' — '+q.place+' — '+fmtTime(q.time)+' (fuente '+q.src+')';
+  const texto = '⚠ '+t('sismo')+' M '+q.mag.toFixed(1)+' — '+q.place+' — '+fmtTime(q.time)+' ('+q.src+')';
   const url = urlEvento(q);
   const btn = document.getElementById('dshare');
   if(navigator.share){
@@ -673,12 +713,114 @@ document.getElementById('dshare').addEventListener('click', async ()=>{
   } else {
     try{
       await navigator.clipboard.writeText(texto+'\n'+url);
-      btn.textContent = '✓ Enlace copiado';
+      btn.textContent = t('copiado');
     }catch(e){
       prompt('Copia el enlace:', url);
     }
-    setTimeout(()=>{ btn.textContent = '🔗 Compartir este sismo'; }, 2500);
+    setTimeout(()=>{ btn.textContent = t('compartir'); }, 2500);
   }
+});
+
+/* ================= tarjeta de imagen ================= */
+function generarTarjeta(q){
+  const S = 1000;
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  const c = cv.getContext('2d');
+
+  c.fillStyle = '#0b0f14'; c.fillRect(0,0,S,S);
+
+  // mini-mapa regional centrado en el epicentro (proyección equirectangular ±18°)
+  const span = 18;
+  const proj = (lon,lat)=>{
+    let dl = lon - q.lon;
+    if(dl > 180) dl -= 360; if(dl < -180) dl += 360;
+    return [S/2 + dl/span*(S/2), S*0.5 - (lat-q.lat)/span*(S/2)];
+  };
+  const dibujar = (data, estilo, w)=>{
+    c.strokeStyle = estilo; c.lineWidth = w;
+    data.forEach(flat=>{
+      c.beginPath(); let dentro = false;
+      for(let i=0;i<flat.length;i+=2){
+        const lon = flat[i], lat = flat[i+1];
+        let dl = lon - q.lon;
+        if(dl > 180) dl -= 360; if(dl < -180) dl += 360;
+        if(Math.abs(dl) > span+4 || Math.abs(lat-q.lat) > span+4){ dentro = false; continue; }
+        const [x,y] = proj(lon,lat);
+        if(!dentro){ c.moveTo(x,y); dentro = true; } else c.lineTo(x,y);
+      }
+      c.stroke();
+    });
+  };
+  dibujar(COAST, '#2c3a48', 2.5);
+  dibujar(PLATES, '#7a4530', 2);
+
+  // epicentro con anillos
+  const col = q.mag>=6 ? '#e8484f' : q.mag>=4.5 ? '#f07f3c' : q.mag>=2.5 ? '#e8b23c' : '#3ec6a8';
+  const [ex,ey] = proj(q.lon, q.lat);
+  [[100,.22],[64,.45],[36,.75]].forEach(([r,a])=>{
+    c.beginPath(); c.arc(ex,ey,r,0,7);
+    c.strokeStyle = col; c.globalAlpha = a; c.lineWidth = 4; c.stroke();
+  });
+  c.globalAlpha = 1;
+  c.beginPath(); c.arc(ex,ey,15,0,7); c.fillStyle = col; c.fill();
+
+  // veladura para legibilidad del texto
+  const g = c.createLinearGradient(0,0,0,S);
+  g.addColorStop(0,'rgba(11,15,20,.9)'); g.addColorStop(.32,'rgba(11,15,20,.15)');
+  g.addColorStop(.6,'rgba(11,15,20,.2)'); g.addColorStop(1,'rgba(11,15,20,.94)');
+  c.fillStyle = g; c.fillRect(0,0,S,S);
+
+  // marca
+  c.fillStyle = '#dde7ef'; c.font = '800 36px Archivo, sans-serif';
+  c.fillText('SISMO·MONITOR', 50, 76);
+  c.fillStyle = '#e8484f'; c.beginPath(); c.arc(36,64,7,0,7); c.fill();
+
+  // magnitud
+  c.fillStyle = col; c.font = '800 150px Archivo, sans-serif';
+  c.fillText('M '+q.mag.toFixed(1), 46, S-250);
+
+  // lugar (hasta 2 líneas)
+  c.fillStyle = '#dde7ef'; c.font = '500 38px JetBrains Mono, monospace';
+  const palabras = q.place.split(' ');
+  let linea = '', lineas = [];
+  palabras.forEach(w=>{
+    if(c.measureText(linea+' '+w).width > S-100 && linea){ lineas.push(linea); linea = w; }
+    else linea = linea ? linea+' '+w : w;
+  });
+  lineas.push(linea);
+  lineas.slice(0,2).forEach((l,i)=>c.fillText(l, 50, S-180+i*48));
+
+  // meta y URL
+  c.fillStyle = '#7c8a99'; c.font = '400 28px JetBrains Mono, monospace';
+  c.fillText(fmtTime(q.time)+'  ·  '+t('prof')+' '+q.depth.toFixed(0)+' km  ·  '+q.src, 50, S-84);
+  c.fillStyle = '#5a6a7c'; c.font = '400 25px JetBrains Mono, monospace';
+  c.fillText(location.host+location.pathname, 50, S-38);
+
+  return new Promise(res=>cv.toBlob(res, 'image/png'));
+}
+
+document.getElementById('dcard').addEventListener('click', async ()=>{
+  const q = allQuakes.find(x=>x.id===selectedId);
+  if(!q) return;
+  const btn = document.getElementById('dcard');
+  btn.textContent = '…';
+  try{
+    const blob = await generarTarjeta(q);
+    const file = new File([blob], 'sismo-M'+q.mag.toFixed(1)+'.png', {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{
+        await navigator.share({files:[file], title:'SISMO·MONITOR', text:urlEvento(q)});
+      }catch(e){ /* usuario canceló */ }
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = file.name;
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(a.href), 5000);
+    }
+  }catch(e){}
+  btn.textContent = t('tarjeta');
 });
 
 let enlaceProfundo = null;
@@ -696,7 +838,7 @@ function resolverEnlaceProfundo(){
     selectQuake(q, true);
   } else {
     const st = document.getElementById('status');
-    st.textContent = 'El sismo del enlace ya no está en la ventana de 24 horas del panel.';
+    st.textContent = t('enlaceviejo');
     st.classList.add('on');
     setTimeout(()=>st.classList.remove('on'), 8000);
   }
@@ -719,7 +861,7 @@ function renderList(){
       <div class="qmag" style="background:${magCss(q.mag)}">${q.mag.toFixed(1)}</div>
       <div class="qinfo">
         <div class="qplace">${q.place}</div>
-        <div class="qmeta">${fmtTime(q.time)} · prof. ${q.depth.toFixed(0)} km · <span style="color:${q.src==='FUNVISIS'?'var(--accent)':'var(--muted)'}">${q.src}</span></div>
+        <div class="qmeta">${fmtTime(q.time)} · ${t('prof')} ${q.depth.toFixed(0)} km · <span style="color:${q.src==='FUNVISIS'?'var(--accent)':'var(--muted)'}">${q.src}</span></div>
       </div>`;
     d.onclick=()=>selectQuake(q,true);
     list.appendChild(d);
@@ -758,7 +900,7 @@ function renderTimeline(){
   ctx.fillStyle='#5a6a7c'; ctx.font='9px JetBrains Mono, monospace';
   for(let k=0;k<=24;k+=6){
     const x = w*k/24;
-    ctx.fillText(k===24?'ahora':`-${24-k}h`, Math.min(x, w-30), h-1);
+    ctx.fillText(k===24?t('ahora'):`-${24-k}h`, Math.min(x, w-30), h-1);
   }
   quakes.forEach(q=>{
     const x = (q.time-from)/(now-from)*w;
@@ -770,6 +912,106 @@ function renderTimeline(){
   });
   ctx.globalAlpha=1;
 }
+
+/* ================= idioma ================= */
+const I18N = {
+  es: {
+    fuentes:'Fuentes:', actualizacion:'Última actualización:',
+    hint:'arrastrar · rueda = zoom · ← → ↑ ↓ rotar · + − zoom · clic en un punto',
+    h24:'Últimas 24 horas', eventos:'Eventos', magmax:'Magnitud máx.', profmedia:'Prof. media',
+    menor:'menor', ligero:'ligero', modfuerte:'moderado–fuerte', mayor:'mayor',
+    profleyenda:'anillo gris = prof. 70–300 km · azul = >300 km',
+    fuentesT:'Fuentes', mundial:'· mundial', caribe:'· mundial / Caribe', placas:'Placas tectónicas',
+    alertasT:'Alertas', activar:'Activar alertas', magmin:'Magnitud mínima',
+    radio:'Radio desde mi ubicación', mundoentero:'Todo el mundo',
+    sonido:'Sonido de alarma', notifB:'Notificación del navegador', probar:'Probar alerta',
+    disclaimer:'⚠ Los sismos no se pueden predecir. Esta alerta avisa de eventos <b>ya registrados</b> por las redes sismológicas, con minutos de retraso. No sustituye los sistemas oficiales de protección civil.',
+    recientes:'Eventos recientes',
+    ubicacion:'Ubicación', fechahora:'Fecha / hora local', coords:'Coordenadas',
+    profundidad:'Profundidad', fuenteL:'Fuente', ficha:'Ficha del evento', abrir:'abrir ↗',
+    compartir:'🔗 Compartir', tarjeta:'🖼 Tarjeta', copiado:'✓ Enlace copiado',
+    sismografo:'Sismógrafo · 24 h', altura:'(altura = magnitud)',
+    navGlobo:'Globo', navDatos:'Datos', navEventos:'Eventos',
+    cargando:'CONECTANDO CON LAS FUENTES…',
+    prof:'prof.', ahora:'ahora', sismo:'Sismo',
+    sinconexion:'⚠ Sin conexión con: ', fuentesdisp:'. Mostrando las fuentes disponibles.',
+    ejemplo:'⚠ No se pudo conectar con las fuentes desde este entorno — mostrando datos de ejemplo. Descarga el archivo y ábrelo en tu navegador para datos reales en vivo.',
+    enlaceviejo:'El sismo del enlace ya no está en la ventana de 24 horas del panel.',
+    banner:'SISMO REGISTRADO', dedistancia:' · a {d} km de ti',
+    solicitando:'Solicitando ubicación…',
+    ubfijada:'✓ Ubicación fijada. Vigilando un radio de {r} km.',
+    sinpermiso:'Sin permiso de ubicación: se alertará de sismos en todo el mundo que superen la magnitud mínima.',
+    alertasmundo:'Alertas activas para todo el mundo.',
+    vigilando:'✓ Vigilando un radio de {r} km.',
+    nogeo:'Este navegador no soporta geolocalización — alertas para todo el mundo.'
+  },
+  en: {
+    fuentes:'Sources:', actualizacion:'Last update:',
+    hint:'drag · wheel = zoom · ← → ↑ ↓ rotate · + − zoom · click a point',
+    h24:'Last 24 hours', eventos:'Events', magmax:'Max magnitude', profmedia:'Avg. depth',
+    menor:'minor', ligero:'light', modfuerte:'moderate–strong', mayor:'major',
+    profleyenda:'gray ring = 70–300 km deep · blue = >300 km',
+    fuentesT:'Sources', mundial:'· worldwide', caribe:'· worldwide / Caribbean', placas:'Tectonic plates',
+    alertasT:'Alerts', activar:'Enable alerts', magmin:'Minimum magnitude',
+    radio:'Radius from my location', mundoentero:'Whole world',
+    sonido:'Alarm sound', notifB:'Browser notification', probar:'Test alert',
+    disclaimer:'⚠ Earthquakes cannot be predicted. This alert reports events <b>already registered</b> by seismic networks, minutes after they occur. It does not replace official civil-protection systems.',
+    recientes:'Recent events',
+    ubicacion:'Location', fechahora:'Local date / time', coords:'Coordinates',
+    profundidad:'Depth', fuenteL:'Source', ficha:'Event page', abrir:'open ↗',
+    compartir:'🔗 Share', tarjeta:'🖼 Card', copiado:'✓ Link copied',
+    sismografo:'Seismograph · 24 h', altura:'(height = magnitude)',
+    navGlobo:'Globe', navDatos:'Data', navEventos:'Events',
+    cargando:'CONNECTING TO SOURCES…',
+    prof:'depth', ahora:'now', sismo:'Earthquake',
+    sinconexion:'⚠ No connection to: ', fuentesdisp:'. Showing available sources.',
+    ejemplo:'⚠ Could not reach the data sources from this environment — showing sample data. Download the file and open it in your browser for live data.',
+    enlaceviejo:'The linked earthquake is no longer within the panel\'s 24-hour window.',
+    banner:'EARTHQUAKE REGISTERED', dedistancia:' · {d} km from you',
+    solicitando:'Requesting location…',
+    ubfijada:'✓ Location set. Watching a {r} km radius.',
+    sinpermiso:'Location permission denied: you will be alerted of worldwide quakes above the minimum magnitude.',
+    alertasmundo:'Alerts active worldwide.',
+    vigilando:'✓ Watching a {r} km radius.',
+    nogeo:'This browser does not support geolocation — worldwide alerts.'
+  }
+};
+let LANG = 'es';
+try{ LANG = localStorage.getItem('sm_lang') || 'es'; }catch(e){}
+const t = k => (I18N[LANG] && I18N[LANG][k]) || I18N.es[k] || k;
+
+function aplicarIdioma(){
+  document.documentElement.lang = LANG;
+  document.querySelectorAll('[data-i18n]').forEach(el=>{
+    const k = el.getAttribute('data-i18n');
+    if(I18N[LANG][k] !== undefined) el.innerHTML = I18N[LANG][k];
+  });
+  document.getElementById('langBtn').textContent = LANG==='es' ? 'EN' : 'ES';
+  document.getElementById('loadingTxt').textContent = t('cargando');
+}
+document.getElementById('langBtn').addEventListener('click', ()=>{
+  LANG = LANG==='es' ? 'en' : 'es';
+  try{ localStorage.setItem('sm_lang', LANG); }catch(e){}
+  aplicarIdioma();
+  if(quakes.length){ renderList(); renderStats(); renderTimeline(); }
+});
+aplicarIdioma();
+
+/* ================= modo kiosko ================= */
+document.getElementById('kioskBtn').addEventListener('click', ()=>{
+  document.body.classList.add('kiosko');
+  if(document.documentElement.requestFullscreen){
+    document.documentElement.requestFullscreen().catch(()=>{});
+  }
+});
+function salirKiosko(){
+  document.body.classList.remove('kiosko');
+  if(document.fullscreenElement) document.exitFullscreen().catch(()=>{});
+}
+document.getElementById('kioskExit').addEventListener('click', salirKiosko);
+document.addEventListener('fullscreenchange', ()=>{
+  if(!document.fullscreenElement) document.body.classList.remove('kiosko');
+});
 
 /* ================= alertas ================= */
 const AL = { on:false, mag:4, rad:300, sound:true, notif:true, pos:null };
@@ -799,16 +1041,16 @@ function distKm(lat1,lon1,lat2,lon2){
 }
 
 function pedirUbicacion(){
-  if(!navigator.geolocation){ setAlStatus('Este navegador no soporta geolocalización — alertas para todo el mundo.'); return; }
-  setAlStatus('Solicitando ubicación…');
+  if(!navigator.geolocation){ setAlStatus(t('nogeo')); return; }
+  setAlStatus(t('solicitando'));
   navigator.geolocation.getCurrentPosition(
     p=>{
       AL.pos = {lat:p.coords.latitude, lon:p.coords.longitude};
-      setAlStatus('✓ Ubicación fijada. Vigilando un radio de '+(AL.rad||'∞')+' km.');
+      setAlStatus(t('ubfijada').replace('{r}', AL.rad||'∞'));
     },
     ()=>{
       AL.pos = null;
-      setAlStatus('Sin permiso de ubicación: se alertará de sismos en todo el mundo que superen la magnitud mínima.');
+      setAlStatus(t('sinpermiso'));
     },
     {enableHighAccuracy:false, timeout:10000, maximumAge:600000}
   );
@@ -838,8 +1080,8 @@ function sonarAlerta(mag){
 let bannerTimer = null;
 function mostrarBanner(q){
   const b = document.getElementById('alertBanner');
-  const dist = AL.pos ? ' · a '+Math.round(distKm(AL.pos.lat,AL.pos.lon,q.lat,q.lon))+' km de ti' : '';
-  b.innerHTML = '⚠ SISMO REGISTRADO — <b>M '+q.mag.toFixed(1)+'</b><br>'+q.place+dist+'<br>'+fmtTime(q.time)+' · fuente '+q.src;
+  const dist = AL.pos ? t('dedistancia').replace('{d}', Math.round(distKm(AL.pos.lat,AL.pos.lon,q.lat,q.lon))) : '';
+  b.innerHTML = '⚠ '+t('banner')+' — <b>M '+q.mag.toFixed(1)+'</b><br>'+q.place+dist+'<br>'+fmtTime(q.time)+' · '+q.src;
   b.classList.add('on');
   clearTimeout(bannerTimer);
   bannerTimer = setTimeout(()=>b.classList.remove('on'), 20000);
@@ -848,8 +1090,8 @@ function mostrarBanner(q){
 function notificar(q){
   if(!('Notification' in window) || Notification.permission!=='granted') return;
   try{
-    new Notification('⚠ Sismo M '+q.mag.toFixed(1), {
-      body: q.place+'\n'+fmtTime(q.time)+' · prof. '+q.depth.toFixed(0)+' km · '+q.src,
+    new Notification('⚠ '+t('sismo')+' M '+q.mag.toFixed(1), {
+      body: q.place+'\n'+fmtTime(q.time)+' · '+t('prof')+' '+q.depth.toFixed(0)+' km · '+q.src,
       tag: 'sismo-monitor'
     });
   }catch(e){}
@@ -883,7 +1125,7 @@ document.getElementById('alOn').addEventListener('change', e=>{
     if(AL.notif && 'Notification' in window && Notification.permission==='default'){
       Notification.requestPermission();
     }
-    if(AL.rad) pedirUbicacion(); else setAlStatus('Alertas activas para todo el mundo.');
+    if(AL.rad) pedirUbicacion(); else setAlStatus(t('alertasmundo'));
   } else setAlStatus('');
 });
 document.getElementById('alMag').addEventListener('change', e=>{ AL.mag=parseFloat(e.target.value); guardarAjustes(); });
@@ -891,7 +1133,7 @@ document.getElementById('alRad').addEventListener('change', e=>{
   AL.rad=parseInt(e.target.value);
   guardarAjustes();
   if(AL.on && AL.rad && !AL.pos) pedirUbicacion();
-  else if(AL.on) setAlStatus(AL.rad ? '✓ Vigilando un radio de '+AL.rad+' km.' : 'Alertas activas para todo el mundo.');
+  else if(AL.on) setAlStatus(AL.rad ? t('vigilando').replace('{r}', AL.rad) : t('alertasmundo'));
 });
 document.getElementById('alSound').addEventListener('change', e=>{ AL.sound=e.target.checked; guardarAjustes(); });
 document.getElementById('alNotif').addEventListener('change', e=>{
@@ -1098,14 +1340,14 @@ async function fetchQuakes(){
     if(results[1].status!=='fulfilled') failed.push('FUNVISIS');
     if(results[2].status!=='fulfilled') failed.push('EMSC');
     if(failed.length){
-      st.textContent = '⚠ Sin conexión con: '+failed.join(', ')+'. Mostrando las fuentes disponibles.';
+      st.textContent = t('sinconexion')+failed.join(', ')+t('fuentesdisp');
       st.classList.add('on');
     } else {
       st.classList.remove('on');
     }
   } else if(!allQuakes.length){
     applyData(SAMPLE.map(s=>({...s, src:'USGS'})));
-    st.textContent = '⚠ No se pudo conectar con las fuentes desde este entorno — mostrando datos de ejemplo. Descarga el archivo y ábrelo en tu navegador para datos reales en vivo.';
+    st.textContent = t('ejemplo');
     st.classList.add('on');
   }
   document.getElementById('loading').classList.add('off');
