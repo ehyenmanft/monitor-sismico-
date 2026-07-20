@@ -85,6 +85,31 @@ body.kiosko #kioskExit{display:block}
 }
 #drowbtns button:hover{border-color:var(--accent)}
 
+/* panel de análisis */
+#analisis{
+  display:none;position:fixed;z-index:26;
+  left:50%;top:56%;transform:translate(-50%,-50%);
+  width:min(760px,94vw);max-height:84vh;overflow-y:auto;
+}
+#analisis.on{display:block}
+#analisis .actrl{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+#analisis select{
+  background:#161d26;color:var(--text);border:1px solid var(--line);border-radius:6px;
+  font-family:inherit;font-size:11px;padding:4px 7px;
+}
+#analisis .anums{display:flex;gap:18px;margin:10px 0 4px;flex-wrap:wrap}
+#analisis .anums div{font-size:11px;color:var(--muted)}
+#analisis .anums b{display:block;font-size:18px;color:var(--text)}
+#analisis h3{font-family:'Archivo',sans-serif;font-size:10px;letter-spacing:.16em;color:var(--muted);text-transform:uppercase;margin:14px 0 6px}
+#analisis canvas{width:100%;display:block;background:#0d1218;border:1px solid var(--line);border-radius:8px}
+#analisis .anota{font-size:9px;color:var(--muted);margin-top:8px;line-height:1.5}
+#anClose{position:absolute;top:8px;right:10px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;font-family:inherit}
+#anLoading{text-align:center;color:var(--muted);font-size:11px;padding:30px 0;display:none}
+@media (max-width:820px){
+  #analisis{left:4px;right:4px;top:60px;bottom:64px;transform:none;width:auto;max-height:none}
+}
+body.kiosko #analisis{display:none !important}
+
 /* ---------- header ---------- */
 header{
   position:fixed;top:0;left:0;right:0;z-index:20;
@@ -280,6 +305,7 @@ header .src a{color:var(--muted)}
   <h1>SISMO<span>·</span>MONITOR</h1>
   <div class="hctrl">
     <button id="langBtn" title="English / Español">EN</button>
+    <button id="analBtn" title="Análisis">📊</button>
     <button id="kioskBtn" title="Modo pantalla completa">⛶</button>
   </div>
   <div class="src">
@@ -381,11 +407,39 @@ header .src a{color:var(--muted)}
   <canvas id="tlcanvas"></canvas>
 </div>
 
+<div class="panel" id="analisis">
+  <button id="anClose">✕</button>
+  <h2 data-i18n="analisisT">Análisis · catálogo USGS</h2>
+  <div class="actrl">
+    <span data-i18n="rango" style="color:var(--muted);font-size:11px">Rango</span>
+    <select id="anRango">
+      <option value="1">24 h</option><option value="3">3 d</option>
+      <option value="7" selected data-i18n="d7">7 días</option><option value="15" data-i18n="d15">15 días</option>
+    </select>
+    <span data-i18n="region" style="color:var(--muted);font-size:11px">Región</span>
+    <select id="anRegion"></select>
+  </div>
+  <div id="anLoading" data-i18n="consultando">Consultando catálogo USGS…</div>
+  <div id="anBody" style="display:none">
+    <div class="anums">
+      <div><b id="anTotal">—</b><span data-i18n="eventos">Eventos</span></div>
+      <div><b id="anMax">—</b><span data-i18n="magmax">Magnitud máx.</span></div>
+      <div><b id="anProm">—</b><span data-i18n="promdia">prom./día</span></div>
+    </div>
+    <h3 data-i18n="magTiempo">Magnitud vs tiempo</h3>
+    <canvas id="chMag" height="190"></canvas>
+    <h3 data-i18n="porDia">Eventos por día</h3>
+    <canvas id="chDia" height="150"></canvas>
+  </div>
+  <div class="anota" id="anNota"></div>
+</div>
+
 <nav id="mobilenav">
   <button id="mnGlobo" class="act"><span class="ico">◉</span><span data-i18n="navGlobo">Globo</span></button>
   <button id="mnDatos"><span class="ico">▤</span><span data-i18n="navDatos">Datos</span></button>
   <button id="mnEventos"><span class="ico">≡</span><span data-i18n="navEventos">Eventos</span></button>
   <button id="mnTl"><span class="ico">∿</span>24 h</button>
+  <button id="mnAnal"><span class="ico">📊</span><span data-i18n="navAnalisis">Análisis</span></button>
 </nav>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -823,6 +877,179 @@ document.getElementById('dcard').addEventListener('click', async ()=>{
   btn.textContent = t('tarjeta');
 });
 
+/* ================= análisis histórico (catálogo USGS) ================= */
+const REGIONES = {
+  rMundo: null,
+  rVen:    {minlat:0.5,  maxlat:13,  minlon:-74,  maxlon:-59,  sinPiso:true},
+  rCaribe: {minlat:8,    maxlat:20,  minlon:-90,  maxlon:-58,  sinPiso:true},
+  rSud:    {minlat:-57,  maxlat:13,  minlon:-85,  maxlon:-33},
+  rNorte:  {minlat:5,    maxlat:72,  minlon:-170, maxlon:-50},
+  rEuro:   {minlat:30,   maxlat:72,  minlon:-12,  maxlon:45},
+  rAsia:   {minlat:-12,  maxlat:60,  minlon:45,   maxlon:150},
+  rOce:    {minlat:-50,  maxlat:0,   minlon:110,  maxlon:180}
+};
+const anCache = {};
+
+function llenarRegiones(){
+  const sel = document.getElementById('anRegion');
+  sel.innerHTML = '';
+  Object.keys(REGIONES).forEach(k=>{
+    const o = document.createElement('option');
+    o.value = k; o.textContent = t(k);
+    sel.appendChild(o);
+  });
+}
+
+function abrirAnalisis(){
+  cerrarHojas();
+  document.getElementById('analisis').classList.add('on');
+  document.getElementById('mnAnal').classList.add('act');
+  document.getElementById('mnGlobo').classList.remove('act');
+  llenarRegiones();
+  cargarAnalisis();
+}
+function cerrarAnalisis(){
+  document.getElementById('analisis').classList.remove('on');
+  document.getElementById('mnAnal').classList.remove('act');
+  if(![...document.querySelectorAll('#left.open,#right.open,#timeline.open')].length){
+    document.getElementById('mnGlobo').classList.add('act');
+  }
+}
+document.getElementById('analBtn').addEventListener('click', ()=>{
+  document.getElementById('analisis').classList.contains('on') ? cerrarAnalisis() : abrirAnalisis();
+});
+document.getElementById('mnAnal').addEventListener('click', ()=>{
+  document.getElementById('analisis').classList.contains('on') ? cerrarAnalisis() : abrirAnalisis();
+});
+document.getElementById('anClose').addEventListener('click', cerrarAnalisis);
+document.getElementById('anRango').addEventListener('change', cargarAnalisis);
+document.getElementById('anRegion').addEventListener('change', cargarAnalisis);
+
+async function cargarAnalisis(){
+  const dias = parseInt(document.getElementById('anRango').value);
+  const regK = document.getElementById('anRegion').value || 'rMundo';
+  const reg = REGIONES[regK];
+  const minMag = (reg && reg.sinPiso) ? 0 : (dias<=1 ? 1.5 : 2.5);
+  const clave = dias+'|'+regK;
+
+  document.getElementById('anNota').textContent = t('analNota').replace('{m}', 'M '+(minMag||'0'));
+  document.getElementById('anBody').style.display = 'none';
+  document.getElementById('anLoading').style.display = 'block';
+  document.getElementById('anLoading').textContent = t('consultando');
+
+  let datos = anCache[clave];
+  if(!datos){
+    try{
+      let url = 'https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&orderby=time'
+              + '&starttime=' + new Date(Date.now()-dias*86400e3).toISOString()
+              + (minMag ? '&minmagnitude='+minMag : '');
+      if(reg) url += '&minlatitude='+reg.minlat+'&maxlatitude='+reg.maxlat
+                   + '&minlongitude='+reg.minlon+'&maxlongitude='+reg.maxlon;
+      const r = await fetch(url);
+      if(!r.ok) throw new Error(r.status);
+      const gj = await r.json();
+      datos = (gj.features||[])
+        .filter(f=>f.properties.mag!=null)
+        .map(f=>({mag:f.properties.mag, time:f.properties.time}));
+      anCache[clave] = datos;
+    }catch(e){
+      document.getElementById('anLoading').textContent = t('analError');
+      return;
+    }
+  }
+
+  // resumen
+  document.getElementById('anTotal').textContent = datos.length;
+  document.getElementById('anMax').textContent = datos.length ? Math.max(...datos.map(d=>d.mag)).toFixed(1) : '—';
+  document.getElementById('anProm').textContent = (datos.length/dias).toFixed(dias>1?0:0);
+
+  document.getElementById('anLoading').style.display = 'none';
+  document.getElementById('anBody').style.display = 'block';
+  dibujarDispersion(datos, dias);
+  dibujarBarrasDia(datos, dias);
+}
+
+const bandaColor = m => m>=6 ? '#e8484f' : m>=4.5 ? '#f07f3c' : m>=2.5 ? '#e8b23c' : '#3ec6a8';
+
+function prepararCanvas(id){
+  const cv = document.getElementById(id);
+  const dpr = Math.min(devicePixelRatio,2);
+  const w = cv.clientWidth, h = parseInt(cv.getAttribute('height'));
+  cv.width = w*dpr; cv.height = h*dpr;
+  const c = cv.getContext('2d'); c.scale(dpr,dpr);
+  c.clearRect(0,0,w,h);
+  return {c,w,h};
+}
+
+function ejeTiempo(c, w, h, desde, ahora, dias){
+  c.strokeStyle='#1e2833'; c.fillStyle='#5a6a7c'; c.font='9px JetBrains Mono, monospace';
+  const pasos = dias<=1 ? 4 : Math.min(dias, 7);
+  for(let i=0;i<=pasos;i++){
+    const tt = desde + (ahora-desde)*i/pasos;
+    const x = 34 + (w-44)*i/pasos;
+    c.beginPath(); c.moveTo(x, 6); c.lineTo(x, h-16); c.stroke();
+    const d = new Date(tt);
+    const lbl = dias<=1
+      ? d.toLocaleTimeString(LANG==='en'?'en-GB':'es',{hour:'2-digit',minute:'2-digit'})
+      : d.toLocaleDateString(LANG==='en'?'en-GB':'es',{day:'2-digit',month:'2-digit'});
+    c.fillText(lbl, Math.min(x-14, w-42), h-4);
+  }
+}
+
+function dibujarDispersion(datos, dias){
+  const {c,w,h} = prepararCanvas('chMag');
+  const ahora = Date.now(), desde = ahora - dias*86400e3;
+  const magTop = Math.max(6.5, ...datos.map(d=>d.mag+0.5));
+  // eje Y
+  c.fillStyle='#5a6a7c'; c.font='9px JetBrains Mono, monospace';
+  for(let m=2; m<=magTop; m+=2){
+    const y = (h-20) - (m/magTop)*(h-30) + 8;
+    c.strokeStyle='#1a2430'; c.beginPath(); c.moveTo(34,y); c.lineTo(w-8,y); c.stroke();
+    c.fillText('M'+m, 6, y+3);
+  }
+  ejeTiempo(c, w, h, desde, ahora, dias);
+  datos.forEach(d=>{
+    const x = 34 + (d.time-desde)/(ahora-desde)*(w-44);
+    if(x<34) return;
+    const y = (h-20) - (d.mag/magTop)*(h-30) + 8;
+    const r = Math.max(1.5, d.mag*0.7);
+    c.beginPath(); c.arc(x,y,r,0,7);
+    c.fillStyle = bandaColor(d.mag);
+    c.globalAlpha = d.mag>=4.5 ? .95 : .55;
+    c.fill();
+  });
+  c.globalAlpha = 1;
+}
+
+function dibujarBarrasDia(datos, dias){
+  const {c,w,h} = prepararCanvas('chDia');
+  const ahora = Date.now(), desde = ahora - dias*86400e3;
+  const nB = dias<=1 ? 24 : dias;           // 24 h → barras por hora
+  const buckets = Array.from({length:nB}, ()=>({b1:0,b2:0,b3:0,b4:0}));
+  datos.forEach(d=>{
+    const i = Math.min(nB-1, Math.floor((d.time-desde)/(ahora-desde)*nB));
+    if(i<0) return;
+    const b = buckets[i];
+    if(d.mag>=6) b.b4++; else if(d.mag>=4.5) b.b3++; else if(d.mag>=2.5) b.b2++; else b.b1++;
+  });
+  const maxT = Math.max(1, ...buckets.map(b=>b.b1+b.b2+b.b3+b.b4));
+  const bw = (w-44)/nB;
+  buckets.forEach((b,i)=>{
+    const x = 34 + i*bw;
+    let y = h-18;
+    [['b1','#3ec6a8'],['b2','#e8b23c'],['b3','#f07f3c'],['b4','#e8484f']].forEach(([k,col])=>{
+      if(!b[k]) return;
+      const bh = b[k]/maxT*(h-32);
+      c.fillStyle = col;
+      c.fillRect(x+1, y-bh, Math.max(1,bw-2), bh);
+      y -= bh;
+    });
+  });
+  c.fillStyle='#5a6a7c'; c.font='9px JetBrains Mono, monospace';
+  c.fillText(maxT, 6, 14);
+  ejeTiempo(c, w, h, desde, ahora, dias);
+}
+
 let enlaceProfundo = null;
 try{
   const h = new URLSearchParams(location.hash.slice(1));
@@ -943,7 +1170,14 @@ const I18N = {
     sinpermiso:'Sin permiso de ubicación: se alertará de sismos en todo el mundo que superen la magnitud mínima.',
     alertasmundo:'Alertas activas para todo el mundo.',
     vigilando:'✓ Vigilando un radio de {r} km.',
-    nogeo:'Este navegador no soporta geolocalización — alertas para todo el mundo.'
+    nogeo:'Este navegador no soporta geolocalización — alertas para todo el mundo.',
+    analisisT:'Análisis · catálogo USGS', navAnalisis:'Análisis', rango:'Rango', region:'Región',
+    d7:'7 días', d15:'15 días', consultando:'Consultando catálogo USGS…', promdia:'prom./día',
+    magTiempo:'Magnitud vs tiempo', porDia:'Eventos por día',
+    analNota:'Fuente: catálogo FDSN de USGS, consultado al abrir. Rangos amplios aplican magnitud mínima {m} para mantener la carga razonable; Venezuela y Caribe se consultan sin piso de magnitud.',
+    analError:'No se pudo consultar el catálogo USGS. Revisa tu conexión e intenta de nuevo.',
+    rMundo:'Mundo', rVen:'Venezuela', rCaribe:'Caribe', rSud:'Sudamérica',
+    rNorte:'Norte y Centroamérica', rEuro:'Europa – Mediterráneo', rAsia:'Asia – Pacífico O.', rOce:'Oceanía'
   },
   en: {
     fuentes:'Sources:', actualizacion:'Last update:',
@@ -973,7 +1207,14 @@ const I18N = {
     sinpermiso:'Location permission denied: you will be alerted of worldwide quakes above the minimum magnitude.',
     alertasmundo:'Alerts active worldwide.',
     vigilando:'✓ Watching a {r} km radius.',
-    nogeo:'This browser does not support geolocation — worldwide alerts.'
+    nogeo:'This browser does not support geolocation — worldwide alerts.',
+    analisisT:'Analysis · USGS catalog', navAnalisis:'Analysis', rango:'Range', region:'Region',
+    d7:'7 days', d15:'15 days', consultando:'Querying USGS catalog…', promdia:'avg/day',
+    magTiempo:'Magnitude vs time', porDia:'Events per day',
+    analNota:'Source: USGS FDSN catalog, queried on open. Wide ranges apply a minimum magnitude of {m} to keep the payload reasonable; Venezuela and the Caribbean are queried with no magnitude floor.',
+    analError:'Could not query the USGS catalog. Check your connection and try again.',
+    rMundo:'World', rVen:'Venezuela', rCaribe:'Caribbean', rSud:'South America',
+    rNorte:'North & Central America', rEuro:'Europe – Mediterranean', rAsia:'Asia – W. Pacific', rOce:'Oceania'
   }
 };
 let LANG = 'es';
