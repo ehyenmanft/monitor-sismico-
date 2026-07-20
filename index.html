@@ -950,7 +950,23 @@ async function cargarAnalisis(){
       const gj = await r.json();
       datos = (gj.features||[])
         .filter(f=>f.properties.mag!=null)
-        .map(f=>({mag:f.properties.mag, time:f.properties.time}));
+        .map(f=>({mag:f.properties.mag, time:f.properties.time,
+                  lat:f.geometry.coordinates[1], lon:f.geometry.coordinates[0]}));
+      // región Venezuela: complementar con FUNVISIS (vía tu proxy)
+      if(regK==='rVen'){
+        try{
+          const fv = await fetchFUNVISIS();
+          const desdeMs = Date.now() - dias*86400e3;
+          fv.filter(q=>q.time>=desdeMs).forEach(q=>{
+            const dup = datos.some(d =>
+              Math.abs(d.time-q.time) < 10*60*1000 &&
+              Math.abs(d.lat-q.lat) < 0.5 &&
+              Math.abs(d.lon-q.lon) < 0.5
+            );
+            if(!dup) datos.push({mag:q.mag, time:q.time, lat:q.lat, lon:q.lon});
+          });
+        }catch(e){ /* si FUNVISIS falla, la gráfica queda solo con USGS */ }
+      }
       anCache[clave] = datos;
     }catch(e){
       document.getElementById('anLoading').textContent = t('analError');
