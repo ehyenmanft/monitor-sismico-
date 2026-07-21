@@ -110,6 +110,24 @@ body.kiosko #kioskExit{display:block}
 }
 body.kiosko #analisis{display:none !important}
 
+/* mapa satelital */
+#satmapa{display:none;position:fixed;inset:0;z-index:17;background:#0b0f14}
+#satmapa.on{display:block}
+.satbtns{position:fixed;top:64px;right:14px;z-index:19;display:none;flex-direction:column;gap:8px}
+#satmapa.on ~ .satbtns{display:flex}
+.satbtns button{
+  width:38px;height:38px;border-radius:9px;cursor:pointer;
+  background:var(--panel);color:var(--text);border:1px solid var(--line);
+  font-family:inherit;font-size:15px;backdrop-filter:blur(8px);
+}
+.satbtns button:hover{border-color:var(--accent)}
+.leaflet-popup-content-wrapper,.leaflet-popup-tip{
+  background:#10151c;color:var(--text);
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+}
+.leaflet-container{background:#0b0f14;font-family:'JetBrains Mono',monospace}
+body.kiosko #satmapa, body.kiosko .satbtns{display:none !important}
+
 /* ---------- header ---------- */
 header{
   position:fixed;top:0;left:0;right:0;z-index:20;
@@ -305,6 +323,7 @@ header .src a{color:var(--muted)}
   <h1>SISMO<span>·</span>MONITOR</h1>
   <div class="hctrl">
     <button id="langBtn" title="English / Español">EN</button>
+    <button id="satBtn" title="Vista satélite">🛰</button>
     <button id="analBtn" title="Análisis">📊</button>
     <button id="kioskBtn" title="Modo pantalla completa">⛶</button>
   </div>
@@ -432,6 +451,12 @@ header .src a{color:var(--muted)}
     <canvas id="chDia" height="150"></canvas>
   </div>
   <div class="anota" id="anNota"></div>
+</div>
+
+<div id="satmapa"></div>
+<div class="satbtns">
+  <button id="satCerrar" title="Volver al globo">✕</button>
+  <button id="satCentrar" title="Centrar en mi ubicación">📍</button>
 </div>
 
 <nav id="mobilenav">
@@ -589,7 +614,8 @@ function addMarkers(quakes){
 }
 
 /* ================= interacción ================= */
-let dragging=false, px=0, py=0, rotY=0, rotX=0.35, vy=0.0016, targetDist=camDist;
+const VEL_ROTACION = 2*Math.PI/120;   // rotación ambiental: 1 vuelta cada 2 minutos
+let dragging=false, px=0, py=0, rotY=0, rotX=0.35, targetDist=camDist;
 const pointers = new Map();   // punteros activos (dedos o mouse)
 let pinchDist = 0;
 
@@ -721,7 +747,7 @@ function alternarHoja(btnId){
     if(id==='timeline') setTimeout(renderTimeline, 300); // el canvas tenía tamaño 0 oculto
   }
 }
-document.getElementById('mnGlobo').onclick = cerrarHojas;
+document.getElementById('mnGlobo').onclick = ()=>{ cerrarHojas(); if(typeof cerrarSat==='function') cerrarSat(); };
 Object.keys(hojas).forEach(id=>{
   document.getElementById(id).onclick = ()=>alternarHoja(id);
 });
@@ -743,6 +769,7 @@ function selectQuake(q, fly){
   document.getElementById('detail').classList.add('on');
   try{ history.replaceState(null,'','#evento='+encodeURIComponent(q.id)); }catch(e){}
   if(esMovil()) cerrarHojas();
+  if(satMapa && document.getElementById('satmapa').classList.contains('on')){ satMapa.setView([q.lat,q.lon], 9); }
   if(fly!==false) flyTo(q.lat, q.lon);
 }
 document.getElementById('dclose').onclick = ()=>{
@@ -1066,6 +1093,87 @@ function dibujarBarrasDia(datos, dias){
   ejeTiempo(c, w, h, desde, ahora, dias);
 }
 
+/* ================= mapa satelital ================= */
+let satMapa=null, satCapa=null, satWatch=null, satYo=null, satYoCirc=null, leafletListo=false;
+
+function cargarLeaflet(cb){
+  if(leafletListo){ cb(); return; }
+  const css = document.createElement('link');
+  css.rel='stylesheet';
+  css.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+  document.head.appendChild(css);
+  const s = document.createElement('script');
+  s.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+  s.onload=()=>{ leafletListo=true; cb(); };
+  s.onerror=()=>{
+    const st=document.getElementById('status');
+    st.textContent=t('satError'); st.classList.add('on');
+    setTimeout(()=>st.classList.remove('on'),6000);
+    cerrarSat();
+  };
+  document.head.appendChild(s);
+}
+
+function abrirSat(){
+  cerrarHojas(); cerrarAnalisis();
+  document.getElementById('satmapa').classList.add('on');
+  cargarLeaflet(iniciarSat);
+}
+function iniciarSat(){
+  if(!satMapa){
+    satMapa = L.map('satmapa', {zoomControl:true}).setView([10.5,-66.9], 6);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Imágenes © Esri · Maxar · Earthstar Geographics'
+    }).addTo(satMapa);
+    satCapa = L.layerGroup().addTo(satMapa);
+  }
+  pintarSismosSat();
+  vigilarUbicacionSat();
+  setTimeout(()=>satMapa.invalidateSize(), 120);
+}
+function pintarSismosSat(){
+  if(!satCapa) return;
+  satCapa.clearLayers();
+  quakes.forEach(q=>{
+    const col = '#'+magColor(q.mag).toString(16).padStart(6,'0');
+    L.circleMarker([q.lat, q.lon], {
+      radius: Math.max(4, q.mag*1.7),
+      color: col, fillColor: col, fillOpacity:.45, weight:1.5
+    }).bindPopup(
+      '<b>M '+q.mag.toFixed(1)+'</b> — '+q.place+'<br>'+
+      fmtTime(q.time)+' · '+t('prof')+' '+q.depth.toFixed(0)+' km · '+q.src
+    ).addTo(satCapa);
+  });
+}
+function vigilarUbicacionSat(){
+  if(satWatch!==null || !navigator.geolocation) return;
+  satWatch = navigator.geolocation.watchPosition(p=>{
+    const ll = [p.coords.latitude, p.coords.longitude];
+    if(!satYo){
+      satYo = L.circleMarker(ll, {radius:8, color:'#fff', fillColor:'#4a90e8', fillOpacity:1, weight:2})
+        .addTo(satMapa).bindPopup(t('tuubicacion'));
+      satYoCirc = L.circle(ll, {radius:p.coords.accuracy, color:'#4a90e8', weight:1, fillOpacity:.08}).addTo(satMapa);
+      satMapa.setView(ll, 12);
+    } else {
+      satYo.setLatLng(ll);
+      satYoCirc.setLatLng(ll);
+      satYoCirc.setRadius(p.coords.accuracy);
+    }
+  }, ()=>{}, {enableHighAccuracy:true, maximumAge:5000, timeout:15000});
+}
+function cerrarSat(){
+  document.getElementById('satmapa').classList.remove('on');
+  if(satWatch!==null){ navigator.geolocation.clearWatch(satWatch); satWatch=null; }
+}
+document.getElementById('satBtn').addEventListener('click', ()=>{
+  document.getElementById('satmapa').classList.contains('on') ? cerrarSat() : abrirSat();
+});
+document.getElementById('satCerrar').addEventListener('click', cerrarSat);
+document.getElementById('satCentrar').addEventListener('click', ()=>{
+  if(satYo) satMapa.setView(satYo.getLatLng(), 14);
+});
+
 let enlaceProfundo = null;
 try{
   const h = new URLSearchParams(location.hash.slice(1));
@@ -1192,6 +1300,7 @@ const I18N = {
     magTiempo:'Magnitud vs tiempo', porDia:'Eventos por día',
     analNota:'Fuente: catálogo FDSN de USGS, consultado al abrir. Rangos amplios aplican magnitud mínima {m} para mantener la carga razonable; Venezuela y Caribe se consultan sin piso de magnitud.',
     analError:'No se pudo consultar el catálogo USGS. Revisa tu conexión e intenta de nuevo.',
+    tuubicacion:'Tu ubicación (tiempo real)', satError:'No se pudo cargar el mapa satelital.',
     rMundo:'Mundo', rVen:'Venezuela', rCaribe:'Caribe', rSud:'Sudamérica',
     rNorte:'Norte y Centroamérica', rEuro:'Europa – Mediterráneo', rAsia:'Asia – Pacífico O.', rOce:'Oceanía'
   },
@@ -1229,6 +1338,7 @@ const I18N = {
     magTiempo:'Magnitude vs time', porDia:'Events per day',
     analNota:'Source: USGS FDSN catalog, queried on open. Wide ranges apply a minimum magnitude of {m} to keep the payload reasonable; Venezuela and the Caribbean are queried with no magnitude floor.',
     analError:'Could not query the USGS catalog. Check your connection and try again.',
+    tuubicacion:'Your location (live)', satError:'Could not load the satellite map.',
     rMundo:'World', rVen:'Venezuela', rCaribe:'Caribbean', rSud:'South America',
     rNorte:'North & Central America', rEuro:'Europe – Mediterranean', rAsia:'Asia – W. Pacific', rOce:'Oceania'
   }
@@ -1439,6 +1549,7 @@ function applyFilters(){
   quakes = allQuakes.filter(q => activo[q.src] !== false);
   addMarkers(quakes);
   renderList(); renderStats(); renderTimeline();
+  if(satCapa && document.getElementById('satmapa').classList.contains('on')) pintarSismosSat();
 }
 document.getElementById('srcUSGS').addEventListener('change', applyFilters);
 document.getElementById('srcFUN').addEventListener('change', applyFilters);
@@ -1640,8 +1751,10 @@ function animate(){
     rotX += (flyTarget.rotX-rotX)*0.08;
     if(Math.abs(flyTarget.rotY-rotY)<0.002 && Math.abs(flyTarget.rotX-rotX)<0.002) flyTarget=null;
   } else if(!dragging){
-    rotY += vy; // rotación ambiental lenta
+    const dt = t - (animate._t ?? t);
+    rotY += VEL_ROTACION * dt; // radianes/segundo, independiente de los FPS
   }
+  animate._t = t;
   globe.rotation.y = rotY;
   globe.rotation.x = rotX;
 
