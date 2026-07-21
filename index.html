@@ -457,6 +457,7 @@ header .src a{color:var(--muted)}
 <div class="satbtns">
   <button id="satCerrar" title="Volver al globo">✕</button>
   <button id="satCentrar" title="Centrar en mi ubicación">📍</button>
+  <button id="satCapaBtn" title="Cambiar capa: detalle / imagen de ayer (NASA)">🗓</button>
 </div>
 
 <nav id="mobilenav">
@@ -1095,6 +1096,7 @@ function dibujarBarrasDia(datos, dias){
 
 /* ================= mapa satelital ================= */
 let satMapa=null, satCapa=null, satWatch=null, satYo=null, satYoCirc=null, leafletListo=false;
+let satCapaEsri=null, satCapaNasa=null, satCapaActual='esri';
 
 function cargarLeaflet(cb){
   if(leafletListo){ cb(); return; }
@@ -1122,10 +1124,18 @@ function abrirSat(){
 function iniciarSat(){
   if(!satMapa){
     satMapa = L.map('satmapa', {zoomControl:true}).setView([10.5,-66.9], 6);
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    satCapaEsri = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       maxZoom: 19,
       attribution: 'Imágenes © Esri · Maxar · Earthstar Geographics'
     }).addTo(satMapa);
+    // imagen diaria de la NASA (VIIRS, procesada con ~1 día de retraso)
+    const ayer = new Date(Date.now() - 86400e3).toISOString().slice(0,10);
+    satCapaNasa = L.tileLayer(
+      'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_SNPP_CorrectedReflectance_TrueColor/default/'
+      + ayer + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg', {
+      maxNativeZoom: 9, maxZoom: 12,
+      attribution: 'Imagen de ' + ayer + ' © NASA EOSDIS GIBS'
+    });
     satCapa = L.layerGroup().addTo(satMapa);
   }
   pintarSismosSat();
@@ -1172,6 +1182,23 @@ document.getElementById('satBtn').addEventListener('click', ()=>{
 document.getElementById('satCerrar').addEventListener('click', cerrarSat);
 document.getElementById('satCentrar').addEventListener('click', ()=>{
   if(satYo) satMapa.setView(satYo.getLatLng(), 14);
+});
+document.getElementById('satCapaBtn').addEventListener('click', ()=>{
+  if(!satMapa) return;
+  const st = document.getElementById('status');
+  if(satCapaActual==='esri'){
+    satMapa.removeLayer(satCapaEsri); satCapaNasa.addTo(satMapa);
+    satCapaActual='nasa';
+    st.textContent = t('capaAyer');
+  } else {
+    satMapa.removeLayer(satCapaNasa); satCapaEsri.addTo(satMapa);
+    satCapaActual='esri';
+    st.textContent = t('capaDetalle');
+  }
+  satCapaNasa.bringToBack && satMapa.hasLayer(satCapaNasa) && satCapaNasa.bringToBack();
+  satMapa.hasLayer(satCapaEsri) && satCapaEsri.bringToBack();
+  st.classList.add('on');
+  setTimeout(()=>st.classList.remove('on'), 4000);
 });
 
 let enlaceProfundo = null;
@@ -1301,6 +1328,7 @@ const I18N = {
     analNota:'Fuente: catálogo FDSN de USGS, consultado al abrir. Rangos amplios aplican magnitud mínima {m} para mantener la carga razonable; Venezuela y Caribe se consultan sin piso de magnitud.',
     analError:'No se pudo consultar el catálogo USGS. Revisa tu conexión e intenta de nuevo.',
     tuubicacion:'Tu ubicación (tiempo real)', satError:'No se pudo cargar el mapa satelital.',
+    capaDetalle:'Capa: máximo detalle (mosaico Esri)', capaAyer:'Capa: imagen de ayer (NASA VIIRS, ~375 m/píxel)',
     rMundo:'Mundo', rVen:'Venezuela', rCaribe:'Caribe', rSud:'Sudamérica',
     rNorte:'Norte y Centroamérica', rEuro:'Europa – Mediterráneo', rAsia:'Asia – Pacífico O.', rOce:'Oceanía'
   },
@@ -1339,6 +1367,7 @@ const I18N = {
     analNota:'Source: USGS FDSN catalog, queried on open. Wide ranges apply a minimum magnitude of {m} to keep the payload reasonable; Venezuela and the Caribbean are queried with no magnitude floor.',
     analError:'Could not query the USGS catalog. Check your connection and try again.',
     tuubicacion:'Your location (live)', satError:'Could not load the satellite map.',
+    capaDetalle:'Layer: max detail (Esri mosaic)', capaAyer:'Layer: yesterday\'s image (NASA VIIRS, ~375 m/px)',
     rMundo:'World', rVen:'Venezuela', rCaribe:'Caribbean', rSud:'South America',
     rNorte:'North & Central America', rEuro:'Europe – Mediterranean', rAsia:'Asia – W. Pacific', rOce:'Oceania'
   }
