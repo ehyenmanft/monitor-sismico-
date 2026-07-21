@@ -6,7 +6,7 @@
  *    → un panel de tiempo real jamás debe mostrar datos viejos como frescos.
  * Al actualizar la web, sube también este archivo cambiando VERSION.
  */
-const VERSION = 'v5';
+const VERSION = 'v6';
 const CACHE = 'sismo-monitor-' + VERSION;
 
 const PRECACHE = [
@@ -19,12 +19,14 @@ const PRECACHE = [
 ];
 
 // dominios de datos en vivo: no interceptar jamás
+// (incluye las teselas satelitales, para no inflar la caché con imágenes)
 const DATOS_VIVOS = [
   'earthquake.usgs.gov',
   'script.google.com',
   'script.googleusercontent.com',
   'sismosve.rafnixg.dev',
-  'seismicportal.eu'
+  'seismicportal.eu',
+  'arcgisonline.com'
 ];
 
 self.addEventListener('install', e => {
