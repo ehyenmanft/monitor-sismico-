@@ -2,7 +2,7 @@
 
 **Panel de monitoreo sísmico mundial en tiempo real** — globo 3D interactivo alimentado por USGS, FUNVISIS (Venezuela) y EMSC, con alertas configurables, modo bilingüe e instalable como app.
 
-**▶ Demo en vivo: https://ehyenmanft.github.io/monitor-sismico-/**
+**▶ Demo en vivo: https://monitor-sismico.js.org/**
 
 > Este proyecto nació de la experiencia del terremoto de La Guaira de 2026. Es la herramienta que su autor hubiera querido tener ese día: gratuita, en español, y con los datos sísmicos venezolanos que ninguna app internacional muestra.
 
@@ -85,4 +85,4 @@ MIT — libre para usar, modificar y redistribuir.
 
 Born from the 2026 La Guaira earthquake, it solves a real gap: Venezuela's seismological agency has no public API, so this project includes an open Google Apps Script proxy that normalizes its unstable, undocumented data feed using content-based validation — an approach reusable for any country with closed seismic data. The full stack (GitHub Pages + Apps Script + optional Telegram bot for 24/7 alerts and a Google Sheets historical archive) runs entirely on free infrastructure.
 
-Live demo: **https://ehyenmanft.github.io/monitor-sismico-/** · License: MIT
+Live demo: **https://monitor-sismico.js.org/** · License: MIT
